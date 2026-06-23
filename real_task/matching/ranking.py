@@ -12,10 +12,14 @@ def rank_candidate(resume_text, jd_text):
     return score_resume_against_jd(resume_text, jd_text)
 
 
-def score_resume_against_jd(resume_text, jd_text, weights=(0.7, 0.3)):
+def score_resume_against_jd(resume_text, jd_text, weights=(0.7, 0.3), protect_conversion=False, conversion_boost=0.1):
     """Score a resume against a job description and return explainable payload.
 
     weights: tuple(rule_weight, semantic_weight)
+    protect_conversion: when True, apply a small boost that favors candidates
+        with higher semantic alignment and more matched skills (aimed to
+        protect paid-apply conversion). `conversion_boost` is the maximum
+        relative uplift applied to the final score (e.g. 0.1 => up to +10%).
     """
     resume = parse_resume(resume_text)
     jd = parse_jd(jd_text)
@@ -43,6 +47,24 @@ def score_resume_against_jd(resume_text, jd_text, weights=(0.7, 0.3)):
         reasons.append("missing_skills: " + ", ".join(rule_result["missing_skills"]))
     reasons.append(f"semantic_score: {semantic_score}")
 
+    # Conversion protection tuning: favor candidates more likely to convert
+    # by boosting final_score based on semantic alignment and matched skills.
+    if protect_conversion:
+        # matched fraction relative to JD required skills (if available)
+        jd = parse_jd(jd_text)
+        req = jd.get("required_skills") or []
+        matched_count = len(rule_result.get("matched_skills", []))
+        matched_frac = (matched_count / len(req)) if req else 0
+
+        # conversion signal: combination of semantic alignment and matched fraction
+        signal = (semantic_score / 100.0) * matched_frac
+        # ensure signal in [0,1]
+        signal = max(0.0, min(1.0, signal))
+
+        uplift = conversion_boost * signal
+        final_score = final_score * (1.0 + uplift)
+        reasons.append(f"conversion_tuning_applied: uplift={round(uplift,4)}")
+
     return {
         "final_score": round(final_score, 2),
         "recommendation": recommendation,
@@ -53,7 +75,7 @@ def score_resume_against_jd(resume_text, jd_text, weights=(0.7, 0.3)):
     }
 
 
-def rank_jobs_for_student(resume_text, jobs, top_k=None, weights=(0.7, 0.3)):
+def rank_jobs_for_student(resume_text, jobs, top_k=None, weights=(0.7, 0.3), protect_conversion=False, conversion_boost=0.1):
     """Rank a list of jobs for a single student/resume.
 
     jobs: iterable of dict-like objects with at least `job_id` and `jd_text` keys.
@@ -66,7 +88,7 @@ def rank_jobs_for_student(resume_text, jobs, top_k=None, weights=(0.7, 0.3)):
         if jd_text is None:
             continue
 
-        res = score_resume_against_jd(resume_text, jd_text, weights=weights)
+        res = score_resume_against_jd(resume_text, jd_text, weights=weights, protect_conversion=protect_conversion, conversion_boost=conversion_boost)
         res["job_id"] = job_id
         scored.append(res)
 
@@ -74,7 +96,7 @@ def rank_jobs_for_student(resume_text, jobs, top_k=None, weights=(0.7, 0.3)):
     return scored[:top_k] if top_k else scored
 
 
-def rank_candidates_for_job(jd_text, candidates, top_k=None, weights=(0.7, 0.3)):
+def rank_candidates_for_job(jd_text, candidates, top_k=None, weights=(0.7, 0.3), protect_conversion=False, conversion_boost=0.1):
     """Rank a list of candidate resumes for a given job description.
 
     candidates: iterable of dict-like objects with at least `candidate_id` and `resume_text` keys.
@@ -87,7 +109,7 @@ def rank_candidates_for_job(jd_text, candidates, top_k=None, weights=(0.7, 0.3))
         if resume_text is None:
             continue
 
-        res = score_resume_against_jd(resume_text, jd_text, weights=weights)
+        res = score_resume_against_jd(resume_text, jd_text, weights=weights, protect_conversion=protect_conversion, conversion_boost=conversion_boost)
         res["candidate_id"] = candidate_id
         scored.append(res)
 

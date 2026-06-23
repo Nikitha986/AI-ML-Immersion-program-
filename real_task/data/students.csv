@@ -1,0 +1,4 @@
+student_id,student_name,resume_text
+s1,Alice,"Experienced Python developer with Machine Learning, TensorFlow, and SQL expertise. Familiar with Docker and AWS."
+s2,Bob,"Java developer with SQL and React experience. Some experience with Docker."
+s3,Carol,"Data scientist skilled in Python, machine learning, deep learning, PyTorch, and PostgreSQL."

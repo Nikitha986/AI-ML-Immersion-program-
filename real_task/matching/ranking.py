@@ -2,6 +2,7 @@ from parsing.resume_parser import parse_resume
 from parsing.jd_parser import parse_jd
 from matching.rule_matcher import rule_match
 from matching.semantic_matcher import semantic_match
+from payments.stub import is_paid
 
 def rank_candidate(resume_text, jd_text):
     """Backward-compatible wrapper that scores a single resume vs a JD.
@@ -12,7 +13,7 @@ def rank_candidate(resume_text, jd_text):
     return score_resume_against_jd(resume_text, jd_text)
 
 
-def score_resume_against_jd(resume_text, jd_text, weights=(0.7, 0.3), protect_conversion=False, conversion_boost=0.1):
+def score_resume_against_jd(resume_text, jd_text, weights=(0.7, 0.3), protect_conversion=False, conversion_boost=0.1, candidate_id=None, job_id=None):
     """Score a resume against a job description and return explainable payload.
 
     weights: tuple(rule_weight, semantic_weight)
@@ -62,8 +63,19 @@ def score_resume_against_jd(resume_text, jd_text, weights=(0.7, 0.3), protect_co
         signal = max(0.0, min(1.0, signal))
 
         uplift = conversion_boost * signal
+        # if we have payment context, increase uplift for paid applies
+        paid_bonus = 0.0
+        try:
+            if candidate_id and job_id and is_paid(candidate_id, job_id):
+                paid_bonus = conversion_boost * 0.5
+        except Exception:
+            paid_bonus = 0.0
+
+        uplift = min(1.0, uplift + paid_bonus)
         final_score = final_score * (1.0 + uplift)
         reasons.append(f"conversion_tuning_applied: uplift={round(uplift,4)}")
+        if paid_bonus > 0:
+            reasons.append(f"paid_bonus_applied: {round(paid_bonus,4)}")
 
     return {
         "final_score": round(final_score, 2),
@@ -96,7 +108,7 @@ def rank_jobs_for_student(resume_text, jobs, top_k=None, weights=(0.7, 0.3), pro
     return scored[:top_k] if top_k else scored
 
 
-def rank_candidates_for_job(jd_text, candidates, top_k=None, weights=(0.7, 0.3), protect_conversion=False, conversion_boost=0.1):
+def rank_candidates_for_job(jd_text, candidates, top_k=None, weights=(0.7, 0.3), protect_conversion=False, conversion_boost=0.1, job_id=None):
     """Rank a list of candidate resumes for a given job description.
 
     candidates: iterable of dict-like objects with at least `candidate_id` and `resume_text` keys.
@@ -109,7 +121,7 @@ def rank_candidates_for_job(jd_text, candidates, top_k=None, weights=(0.7, 0.3),
         if resume_text is None:
             continue
 
-        res = score_resume_against_jd(resume_text, jd_text, weights=weights, protect_conversion=protect_conversion, conversion_boost=conversion_boost)
+        res = score_resume_against_jd(resume_text, jd_text, weights=weights, protect_conversion=protect_conversion, conversion_boost=conversion_boost, candidate_id=candidate_id, job_id=job_id)
         res["candidate_id"] = candidate_id
         scored.append(res)
 

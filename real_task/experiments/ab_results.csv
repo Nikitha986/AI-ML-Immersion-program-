@@ -1,0 +1,11 @@
+arm,threshold,precision,recall,fpr,support
+control,50,0.75,0.75,0.2,4
+control,60,1.0,0.75,0.0,4
+control,65,1.0,0.75,0.0,4
+control,70,1.0,0.75,0.0,4
+control,80,1.0,0.75,0.0,4
+treatment,50,0.75,0.75,0.2,4
+treatment,60,1.0,0.75,0.0,4
+treatment,65,1.0,0.75,0.0,4
+treatment,70,1.0,0.75,0.0,4
+treatment,80,1.0,0.75,0.0,4

@@ -51,6 +51,9 @@ def score_resume_against_jd(resume_text, jd_text, weights=(0.7, 0.3), protect_co
         reasons.append("missing_skills: " + ", ".join(rule_result["missing_skills"]))
     reasons.append(f"semantic_score: {semantic_score}")
 
+    # default guardrail flag
+    low_fit_warning = False
+
     # Conversion protection tuning: favor candidates more likely to convert
     # by boosting final_score based on semantic alignment and matched skills.
     if protect_conversion:

@@ -1,0 +1,2 @@
+candidate_id,job_id,pos_before,score_before,pos_after,score_after,paid
+s1,j1,1,83.18,1,92.56,True

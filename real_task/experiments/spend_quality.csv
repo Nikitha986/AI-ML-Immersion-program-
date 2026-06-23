@@ -1,1 +1,2 @@
-candidate_id,job_id,final_score,low_fit_warning
+candidate_id,job_id,final_score,low_fit_warning,paid
+s2,j1,42.18,True,True

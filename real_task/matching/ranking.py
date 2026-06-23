@@ -4,6 +4,9 @@ from matching.rule_matcher import rule_match
 from matching.semantic_matcher import semantic_match
 from payments.stub import is_paid
 
+# threshold for low-fit warning (percent)
+LOW_FIT_THRESHOLD = 60
+
 def rank_candidate(resume_text, jd_text):
     """Backward-compatible wrapper that scores a single resume vs a JD.
 
@@ -77,13 +80,24 @@ def score_resume_against_jd(resume_text, jd_text, weights=(0.7, 0.3), protect_co
         if paid_bonus > 0:
             reasons.append(f"paid_bonus_applied: {round(paid_bonus,4)}")
 
+        # spend-quality guardrail: if candidate paid but final score is low,
+        # flag a low-fit warning so downstream systems can reconcile spend.
+        low_fit_warning = False
+        try:
+            if candidate_id and job_id and is_paid(candidate_id, job_id) and final_score < LOW_FIT_THRESHOLD:
+                low_fit_warning = True
+                reasons.append(f"low_fit_warning: final_score={round(final_score,2)} < {LOW_FIT_THRESHOLD}")
+        except Exception:
+            low_fit_warning = False
+
     return {
         "final_score": round(final_score, 2),
         "recommendation": recommendation,
         "matched_skills": rule_result.get("matched_skills", []),
         "missing_skills": rule_result.get("missing_skills", []),
         "semantic_score": semantic_score,
-        "reasons": reasons
+        "reasons": reasons,
+        "low_fit_warning": low_fit_warning
     }
 
 

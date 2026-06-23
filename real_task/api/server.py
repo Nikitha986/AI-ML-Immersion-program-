@@ -179,6 +179,44 @@ def generate_paid_metrics(req: GenerateMetricsRequest):
     return {"metrics_file": out_path, "job_id": req.job_id, "candidates": len(candidates)}
 
 
+@app.post("/admin/spend_guardrail")
+def spend_guardrail(job_id: str | None = None):
+    # Generate spend_quality csv and return summary
+    from baseline.matching import _load_data
+    from payments.stub import is_paid
+    import csv
+
+    students, jobs = _load_data()
+    if job_id is None:
+        job_id = jobs.iloc[0]["job_id"]
+
+    jrow = jobs[jobs["job_id"] == job_id]
+    if jrow.empty:
+        return {"rows": 0, "file": None}
+
+    jd_text = jrow.iloc[0].get("jd_text") or jrow.iloc[0].get("description") or ""
+
+    candidates = []
+    for _, s in students.iterrows():
+        candidates.append({"candidate_id": s["student_id"], "resume_text": s.get("resume_text", "")})
+
+    results = rank_candidates_for_job(jd_text, candidates, protect_conversion=True, conversion_boost=0.12, job_id=job_id)
+
+    out_path = "experiments/spend_quality.csv"
+    rows = 0
+    with open(out_path, "w", newline='', encoding='utf-8') as fh:
+        w = csv.writer(fh)
+        w.writerow(["candidate_id", "job_id", "final_score", "low_fit_warning", "paid"])
+        for r in results:
+            cid = r.get("candidate_id")
+            paid = is_paid(cid, job_id)
+            if paid:
+                w.writerow([cid, job_id, r.get("final_score"), r.get("low_fit_warning", False), paid])
+                rows += 1
+
+    return {"rows": rows, "file": out_path}
+
+
 @app.post("/rank_jobs_for_student")
 def rank_jobs(req: StudentRankRequest):
     # load jobs from baseline data and run ranking

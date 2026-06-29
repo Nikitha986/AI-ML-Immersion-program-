@@ -45,6 +45,7 @@ def main():
         print(f"{s['student_id']} - {s['student_name']}")
         print("  skills:", parsed["skills"])
         print("  structured_skills:", parsed["structured_skills"])
+        print("  ontology:", parsed["ontology"])
         print()
 
     print("=== JD parsing v0 ===")
@@ -53,6 +54,7 @@ def main():
         print(f"{j['job_id']} - {j['job_title']}")
         print("  required_skills:", parsed["required_skills"])
         print("  structured_skills:", parsed["structured_skills"])
+        print("  ontology:", parsed["ontology"])
         print()
 
 

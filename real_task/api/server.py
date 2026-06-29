@@ -43,6 +43,8 @@ class JobRankConversionRequest(BaseModel):
     job_id: str
     protect_conversion: bool = False
     conversion_boost: float = 0.1
+    protect_hardening: bool = False
+    hardening_boost: float = 0.1
 
 
 class BulkPayItem(BaseModel):
@@ -115,7 +117,15 @@ def rank_job_with_conversion(req: JobRankConversionRequest):
     for _, s in students.iterrows():
         candidates.append({"candidate_id": s["student_id"], "resume_text": s.get("resume_text", "")})
 
-    results = rank_candidates_for_job(jd_text, candidates, protect_conversion=req.protect_conversion, conversion_boost=req.conversion_boost, job_id=req.job_id)
+    results = rank_candidates_for_job(
+        jd_text,
+        candidates,
+        protect_conversion=req.protect_conversion,
+        conversion_boost=req.conversion_boost,
+        protect_hardening=req.protect_hardening,
+        hardening_boost=req.hardening_boost,
+        job_id=req.job_id,
+    )
     return {"candidates": results}
 
 

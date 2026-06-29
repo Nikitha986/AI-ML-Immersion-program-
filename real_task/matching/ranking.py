@@ -6,6 +6,11 @@ from payments.stub import is_paid
 
 # threshold for low-fit warning (percent)
 LOW_FIT_THRESHOLD = 60
+# hardening signals for false-positive reduction
+HARDENING_MIN_SEMANTIC = 55
+HARDENING_MIN_MATCHED_FRAC = 0.25
+HARDENING_MAX_PENALTY = 0.20
+
 
 def rank_candidate(resume_text, jd_text):
     """Backward-compatible wrapper that scores a single resume vs a JD.
@@ -16,7 +21,17 @@ def rank_candidate(resume_text, jd_text):
     return score_resume_against_jd(resume_text, jd_text)
 
 
-def score_resume_against_jd(resume_text, jd_text, weights=(0.7, 0.3), protect_conversion=False, conversion_boost=0.1, candidate_id=None, job_id=None):
+def score_resume_against_jd(
+    resume_text,
+    jd_text,
+    weights=(0.7, 0.3),
+    protect_conversion=False,
+    conversion_boost=0.1,
+    protect_hardening=False,
+    hardening_boost=0.1,
+    candidate_id=None,
+    job_id=None
+):
     """Score a resume against a job description and return explainable payload.
 
     weights: tuple(rule_weight, semantic_weight)
@@ -24,13 +39,16 @@ def score_resume_against_jd(resume_text, jd_text, weights=(0.7, 0.3), protect_co
         with higher semantic alignment and more matched skills (aimed to
         protect paid-apply conversion). `conversion_boost` is the maximum
         relative uplift applied to the final score (e.g. 0.1 => up to +10%).
+    protect_hardening: when True, apply conservative hardening penalties to
+        reduce false positives from low-confidence matches.
     """
     resume = parse_resume(resume_text)
     jd = parse_jd(jd_text)
+    required_skills = jd.get("required_skills", [])
 
     rule_result = rule_match(
         resume.get("skills", []),
-        jd.get("required_skills", [])
+        required_skills
     )
 
     semantic_score = semantic_match(resume_text, jd_text)
@@ -38,11 +56,8 @@ def score_resume_against_jd(resume_text, jd_text, weights=(0.7, 0.3), protect_co
     rule_w, sem_w = weights
     final_score = (rule_result["match_score"] * rule_w + semantic_score * sem_w)
 
-    recommendation = "Strong Match"
-    if final_score < 80:
-        recommendation = "Moderate Match"
-    if final_score < 60:
-        recommendation = "Weak Match"
+    matched_count = len(rule_result.get("matched_skills", []))
+    matched_frac = (matched_count / len(required_skills)) if required_skills else 0.0
 
     reasons = []
     if rule_result.get("matched_skills"):
@@ -51,25 +66,36 @@ def score_resume_against_jd(resume_text, jd_text, weights=(0.7, 0.3), protect_co
         reasons.append("missing_skills: " + ", ".join(rule_result["missing_skills"]))
     reasons.append(f"semantic_score: {semantic_score}")
 
-    # default guardrail flag
-    low_fit_warning = False
+    false_positive_warning = False
+
+    # Hardening guardrail: penalize low-confidence matches to reduce false positives.
+    if protect_hardening:
+        penalty = 0.0
+
+        if matched_count == 0 and semantic_score < 50:
+            penalty = min(HARDENING_MAX_PENALTY, hardening_boost + 0.1)
+        elif matched_frac < HARDENING_MIN_MATCHED_FRAC and semantic_score < HARDENING_MIN_SEMANTIC:
+            gap = HARDENING_MIN_MATCHED_FRAC - matched_frac
+            semantic_gap = max(0.0, HARDENING_MIN_SEMANTIC - semantic_score) / 100.0
+            penalty = min(HARDENING_MAX_PENALTY, hardening_boost * 0.5 + gap * 0.5 + semantic_gap * 0.25)
+        elif semantic_score < 35:
+            penalty = min(HARDENING_MAX_PENALTY, hardening_boost * 0.5)
+
+        if penalty > 0.0:
+            final_score = final_score * (1.0 - penalty)
+            false_positive_warning = True
+            reasons.append(
+                f"hardening_applied: penalty={round(penalty,4)} matched_frac={round(matched_frac,3)} semantic_score={semantic_score}"
+            )
 
     # Conversion protection tuning: favor candidates more likely to convert
     # by boosting final_score based on semantic alignment and matched skills.
+    low_fit_warning = False
     if protect_conversion:
-        # matched fraction relative to JD required skills (if available)
-        jd = parse_jd(jd_text)
-        req = jd.get("required_skills") or []
-        matched_count = len(rule_result.get("matched_skills", []))
-        matched_frac = (matched_count / len(req)) if req else 0
-
-        # conversion signal: combination of semantic alignment and matched fraction
         signal = (semantic_score / 100.0) * matched_frac
-        # ensure signal in [0,1]
         signal = max(0.0, min(1.0, signal))
 
         uplift = conversion_boost * signal
-        # if we have payment context, increase uplift for paid applies
         paid_bonus = 0.0
         try:
             if candidate_id and job_id and is_paid(candidate_id, job_id):
@@ -83,15 +109,20 @@ def score_resume_against_jd(resume_text, jd_text, weights=(0.7, 0.3), protect_co
         if paid_bonus > 0:
             reasons.append(f"paid_bonus_applied: {round(paid_bonus,4)}")
 
-        # spend-quality guardrail: if candidate paid but final score is low,
-        # flag a low-fit warning so downstream systems can reconcile spend.
-        low_fit_warning = False
         try:
             if candidate_id and job_id and is_paid(candidate_id, job_id) and final_score < LOW_FIT_THRESHOLD:
                 low_fit_warning = True
-                reasons.append(f"low_fit_warning: final_score={round(final_score,2)} < {LOW_FIT_THRESHOLD}")
+                reasons.append(
+                    f"low_fit_warning: final_score={round(final_score,2)} < {LOW_FIT_THRESHOLD}"
+                )
         except Exception:
             low_fit_warning = False
+
+    recommendation = "Strong Match"
+    if final_score < 80:
+        recommendation = "Moderate Match"
+    if final_score < 60:
+        recommendation = "Weak Match"
 
     return {
         "final_score": round(final_score, 2),
@@ -100,11 +131,21 @@ def score_resume_against_jd(resume_text, jd_text, weights=(0.7, 0.3), protect_co
         "missing_skills": rule_result.get("missing_skills", []),
         "semantic_score": semantic_score,
         "reasons": reasons,
-        "low_fit_warning": low_fit_warning
+        "low_fit_warning": low_fit_warning,
+        "false_positive_warning": false_positive_warning
     }
 
 
-def rank_jobs_for_student(resume_text, jobs, top_k=None, weights=(0.7, 0.3), protect_conversion=False, conversion_boost=0.1):
+def rank_jobs_for_student(
+    resume_text,
+    jobs,
+    top_k=None,
+    weights=(0.7, 0.3),
+    protect_conversion=False,
+    conversion_boost=0.1,
+    protect_hardening=False,
+    hardening_boost=0.1
+):
     """Rank a list of jobs for a single student/resume.
 
     jobs: iterable of dict-like objects with at least `job_id` and `jd_text` keys.
@@ -117,7 +158,15 @@ def rank_jobs_for_student(resume_text, jobs, top_k=None, weights=(0.7, 0.3), pro
         if jd_text is None:
             continue
 
-        res = score_resume_against_jd(resume_text, jd_text, weights=weights, protect_conversion=protect_conversion, conversion_boost=conversion_boost)
+        res = score_resume_against_jd(
+            resume_text,
+            jd_text,
+            weights=weights,
+            protect_conversion=protect_conversion,
+            conversion_boost=conversion_boost,
+            protect_hardening=protect_hardening,
+            hardening_boost=hardening_boost,
+        )
         res["job_id"] = job_id
         scored.append(res)
 
@@ -125,7 +174,17 @@ def rank_jobs_for_student(resume_text, jobs, top_k=None, weights=(0.7, 0.3), pro
     return scored[:top_k] if top_k else scored
 
 
-def rank_candidates_for_job(jd_text, candidates, top_k=None, weights=(0.7, 0.3), protect_conversion=False, conversion_boost=0.1, job_id=None):
+def rank_candidates_for_job(
+    jd_text,
+    candidates,
+    top_k=None,
+    weights=(0.7, 0.3),
+    protect_conversion=False,
+    conversion_boost=0.1,
+    protect_hardening=False,
+    hardening_boost=0.1,
+    job_id=None
+):
     """Rank a list of candidate resumes for a given job description.
 
     candidates: iterable of dict-like objects with at least `candidate_id` and `resume_text` keys.
@@ -138,7 +197,17 @@ def rank_candidates_for_job(jd_text, candidates, top_k=None, weights=(0.7, 0.3),
         if resume_text is None:
             continue
 
-        res = score_resume_against_jd(resume_text, jd_text, weights=weights, protect_conversion=protect_conversion, conversion_boost=conversion_boost, candidate_id=candidate_id, job_id=job_id)
+        res = score_resume_against_jd(
+            resume_text,
+            jd_text,
+            weights=weights,
+            protect_conversion=protect_conversion,
+            conversion_boost=conversion_boost,
+            protect_hardening=protect_hardening,
+            hardening_boost=hardening_boost,
+            candidate_id=candidate_id,
+            job_id=job_id
+        )
         res["candidate_id"] = candidate_id
         scored.append(res)
 

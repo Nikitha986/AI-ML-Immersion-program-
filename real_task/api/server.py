@@ -62,10 +62,30 @@ class GenerateMetricsRequest(BaseModel):
     conversion_boost: float = 0.12
 
 
+class ReviewQueueRequest(BaseModel):
+    job_id: str | None = None
+    candidate_ids: list[str] | None = None
+    protect_conversion: bool = False
+    conversion_boost: float = 0.1
+    protect_hardening: bool = False
+    hardening_boost: float = 0.1
+
+
+@app.get("/")
+def health_check():
+    return {"status": "running", "mode": "recommendation_v1"}
+
+
 @app.post("/match_text")
 def match_text(req: TextMatchRequest):
     result = rank_candidate(req.resume_text, req.jd_text)
     return result
+
+
+@app.post("/recommendation_v1")
+def recommendation_v1(req: TextMatchRequest):
+    result = rank_candidate(req.resume_text, req.jd_text)
+    return {"recommendation_v1": result, "status": "ready"}
 
 
 @app.post("/rank_job")
@@ -139,6 +159,38 @@ def mark_paid_bulk(req: BulkPayRequest):
         except Exception as e:
             successes.append({"candidate_id": item.candidate_id, "job_id": item.job_id, "status": f"error: {e}"})
     return {"results": successes}
+
+
+@app.post("/admin/review_queue")
+def review_queue(req: ReviewQueueRequest):
+    from baseline.matching import _load_data
+
+    students, jobs = _load_data()
+    job_id = req.job_id or jobs.iloc[0]["job_id"]
+
+    jrow = jobs[jobs["job_id"] == job_id]
+    if jrow.empty:
+        return {"items": [], "count": 0, "job_id": job_id}
+
+    jd_text = jrow.iloc[0].get("jd_text") or jrow.iloc[0].get("description") or ""
+    candidates = []
+    for _, s in students.iterrows():
+        cid = s["student_id"]
+        if req.candidate_ids and cid not in req.candidate_ids:
+            continue
+        candidates.append({"candidate_id": cid, "resume_text": s.get("resume_text", "")})
+
+    results = rank_candidates_for_job(
+        jd_text,
+        candidates,
+        protect_conversion=req.protect_conversion,
+        conversion_boost=req.conversion_boost,
+        protect_hardening=req.protect_hardening,
+        hardening_boost=req.hardening_boost,
+        job_id=job_id,
+    )
+    flagged = [r for r in results if r.get("admin_flags", {}).get("weak_item_flag")]
+    return {"items": flagged, "count": len(flagged), "job_id": job_id}
 
 
 @app.post("/admin/generate_paid_metrics")

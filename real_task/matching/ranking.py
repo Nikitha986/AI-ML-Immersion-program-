@@ -12,6 +12,56 @@ HARDENING_MIN_MATCHED_FRAC = 0.25
 HARDENING_MAX_PENALTY = 0.20
 
 
+def _build_trust_signoff(final_score, semantic_score, matched_count, matched_frac, false_positive_warning, low_fit_warning):
+    notes = []
+    if matched_count == 0:
+        notes.append("no_skill_overlap")
+    if matched_frac < 0.3:
+        notes.append("low_skill_coverage")
+    if false_positive_warning:
+        notes.append("hardening_penalty_applied")
+    if low_fit_warning:
+        notes.append("low_fit_warning")
+    if semantic_score < 60:
+        notes.append("semantic_score_below_target")
+
+    status = "signed_off"
+    if final_score < 75 or semantic_score < 60 or matched_count == 0 or false_positive_warning or low_fit_warning:
+        status = "needs_review"
+
+    if final_score >= 85 and semantic_score >= 75 and matched_count > 0 and not false_positive_warning:
+        confidence = "high"
+    elif final_score >= 65 and semantic_score >= 60:
+        confidence = "medium"
+    else:
+        confidence = "low"
+
+    return {
+        "status": status,
+        "confidence": confidence,
+        "notes": notes,
+    }
+
+
+def _build_admin_flags(final_score, matched_count, false_positive_warning, low_fit_warning, recommendation):
+    review_reasons = []
+    if recommendation == "Weak Match":
+        review_reasons.append("weak_match_score")
+    if false_positive_warning:
+        review_reasons.append("hardening_penalty")
+    if low_fit_warning:
+        review_reasons.append("low_fit_warning")
+    if matched_count == 0:
+        review_reasons.append("no_skill_overlap")
+
+    weak_item_flag = bool(review_reasons) or final_score < 60
+    return {
+        "weak_item_flag": weak_item_flag,
+        "needs_review": weak_item_flag,
+        "review_reason": review_reasons,
+    }
+
+
 def rank_candidate(resume_text, jd_text):
     """Backward-compatible wrapper that scores a single resume vs a JD.
 
@@ -124,6 +174,30 @@ def score_resume_against_jd(
     if final_score < 60:
         recommendation = "Weak Match"
 
+    trust_signoff = _build_trust_signoff(
+        final_score,
+        semantic_score,
+        matched_count,
+        matched_frac,
+        false_positive_warning,
+        low_fit_warning,
+    )
+    admin_flags = _build_admin_flags(
+        final_score,
+        matched_count,
+        false_positive_warning,
+        low_fit_warning,
+        recommendation,
+    )
+    explanation = (
+        f"Matched {matched_count} of {len(required_skills)} required skills "
+        f"with semantic similarity {semantic_score}."
+    )
+    if false_positive_warning:
+        explanation += " The system applied a hardening penalty to reduce false positives."
+    if low_fit_warning:
+        explanation += " The recommendation is flagged for low-fit review."
+
     return {
         "final_score": round(final_score, 2),
         "recommendation": recommendation,
@@ -131,8 +205,15 @@ def score_resume_against_jd(
         "missing_skills": rule_result.get("missing_skills", []),
         "semantic_score": semantic_score,
         "reasons": reasons,
+        "explanation": explanation,
         "low_fit_warning": low_fit_warning,
-        "false_positive_warning": false_positive_warning
+        "false_positive_warning": false_positive_warning,
+        "trust_signoff": trust_signoff,
+        "admin_flags": admin_flags,
+        "ontology": {
+            "resume": resume.get("ontology", {}),
+            "job": jd.get("ontology", {}),
+        },
     }
 
 

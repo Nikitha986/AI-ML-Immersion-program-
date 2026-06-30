@@ -7,6 +7,7 @@ from matching.ranking import (
     rank_candidates_for_job,
 )
 from matching.fairness_audit import run_fairness_audit, save_fairness_audit
+from matching.drift_monitoring import run_drift_monitoring, save_drift_monitoring
 from baseline.matching import calculate_match
 from payments.stub import mark_paid, is_paid
 
@@ -171,6 +172,12 @@ def mark_paid_bulk(req: BulkPayRequest):
 def fairness_audit():
     audit = save_fairness_audit()
     return audit
+
+
+@app.post("/admin/drift_monitoring")
+def drift_monitoring():
+    report = save_drift_monitoring()
+    return report
 
 
 @app.post("/admin/review_queue")

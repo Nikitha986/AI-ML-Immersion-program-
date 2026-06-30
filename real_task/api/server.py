@@ -6,6 +6,7 @@ from matching.ranking import (
     rank_jobs_for_student,
     rank_candidates_for_job,
 )
+from matching.fairness_audit import run_fairness_audit, save_fairness_audit
 from baseline.matching import calculate_match
 from payments.stub import mark_paid, is_paid
 
@@ -74,6 +75,11 @@ class ReviewQueueRequest(BaseModel):
 @app.get("/")
 def health_check():
     return {"status": "running", "mode": "recommendation_v1"}
+
+
+@app.get("/phase3")
+def phase3_status():
+    return {"status": "phase3_ready", "fairness_audit": run_fairness_audit()}
 
 
 @app.post("/match_text")
@@ -159,6 +165,12 @@ def mark_paid_bulk(req: BulkPayRequest):
         except Exception as e:
             successes.append({"candidate_id": item.candidate_id, "job_id": item.job_id, "status": f"error: {e}"})
     return {"results": successes}
+
+
+@app.post("/admin/fairness_audit")
+def fairness_audit():
+    audit = save_fairness_audit()
+    return audit
 
 
 @app.post("/admin/review_queue")

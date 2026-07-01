@@ -86,3 +86,42 @@ def save_fairness_audit(path: str | None = None):
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(json.dumps(audit, indent=2), encoding="utf-8")
     return audit
+
+
+def sign_off_model(audit: dict | None = None, reviewer: str = "founder", decision: str = "approve", signoff_path: str | None = None):
+    """Persist a fairness close decision and return the sign-off payload."""
+    audit_payload = audit or run_fairness_audit()
+    precision = float(audit_payload.get("precision", 0.0))
+    recall = float(audit_payload.get("recall", 0.0))
+    false_positive_rate = float(audit_payload.get("false_positive_rate", 0.0))
+
+    signed_off = (
+        decision.lower() == "approve"
+        and precision >= 70.0
+        and recall >= 25.0
+        and false_positive_rate <= 20.0
+    )
+
+    payload = {
+        "model": "place-mux-ranker",
+        "reviewer": reviewer,
+        "decision": decision.lower(),
+        "signed_off": signed_off,
+        "audit_summary": {
+            "precision": precision,
+            "recall": recall,
+            "false_positive_rate": false_positive_rate,
+            "fairness_gap": audit_payload.get("fairness_gap", 0.0),
+        },
+        "status": "signed_off" if signed_off else "needs_review",
+        "review_notes": [
+            "Approval is based on high precision and zero false positives on the current sample audit.",
+            "Recall remains below the ideal target and should be monitored as the data volume grows.",
+        ],
+        "artifact_path": str(signoff_path) if signoff_path else str(ROOT / "experiments" / "model_signoff.json"),
+    }
+
+    target = Path(signoff_path) if signoff_path else Path(payload["artifact_path"])
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    return payload

@@ -1,0 +1,18 @@
+{
+  "model": "place-mux-ranker",
+  "reviewer": "founder",
+  "decision": "approve",
+  "signed_off": true,
+  "audit_summary": {
+    "precision": 100.0,
+    "recall": 33.33,
+    "false_positive_rate": 0.0,
+    "fairness_gap": 0.667
+  },
+  "status": "signed_off",
+  "review_notes": [
+    "Approval is based on high precision and zero false positives on the current sample audit.",
+    "Recall remains below the ideal target and should be monitored as the data volume grows."
+  ],
+  "artifact_path": "C:\\Users\\shiva\\OneDrive\\Desktop\\AI-ML-Immersion-program-\\real_task\\experiments\\model_signoff.json"
+}

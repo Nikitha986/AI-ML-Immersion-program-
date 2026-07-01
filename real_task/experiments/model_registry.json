@@ -1,0 +1,32 @@
+[
+  {
+    "model_name": "place-mux-ranker",
+    "version": "v1.0",
+    "status": "staged",
+    "metrics": {
+      "precision": 83.2,
+      "recall": 78.4
+    },
+    "registered_at": "2026-07-01T05:47:32Z"
+  },
+  {
+    "model_name": "place-mux-ranker",
+    "version": "v1.0",
+    "status": "staged",
+    "metrics": {
+      "precision": 83.2,
+      "recall": 78.4
+    },
+    "registered_at": "2026-07-01T05:48:11Z"
+  },
+  {
+    "model_name": "place-mux-ranker",
+    "version": "v1.0",
+    "status": "staged",
+    "metrics": {
+      "precision": 83.2,
+      "recall": 78.4
+    },
+    "registered_at": "2026-07-01T05:50:10Z"
+  }
+]

@@ -1,0 +1,23 @@
+{
+  "status": "fairness_audit_underway",
+  "precision": 100.0,
+  "recall": 33.33,
+  "false_positive_rate": 0.0,
+  "fairness_gap": 0.667,
+  "consent_security": {
+    "consent_depth": "recorded",
+    "edge_security": "baseline_guardrails_active",
+    "notes": [
+      "fairness audit started on real sample dataset",
+      "recommendations include explainability and review flags"
+    ]
+  },
+  "sample_size": 9,
+  "details": {
+    "tp": 1,
+    "fp": 0,
+    "fn": 2,
+    "tn": 6
+  },
+  "artifact_path": "C:\\Users\\shiva\\OneDrive\\Desktop\\AI-ML-Immersion-program-\\real_task\\experiments\\fairness_audit.json"
+}

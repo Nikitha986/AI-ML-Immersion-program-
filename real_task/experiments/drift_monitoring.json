@@ -1,0 +1,23 @@
+{
+  "status": "drift_monitoring_live",
+  "drift_score": 100.0,
+  "retraining_needed": true,
+  "mean_score": 44.34,
+  "score_spread": 91.44,
+  "sample_size": 9,
+  "data_subject_rights": {
+    "delete_request_support": "simulated",
+    "data_retention": "short_term_artifacts_only",
+    "notes": [
+      "subject deletion request is logged and can be propagated to downstream stores"
+    ]
+  },
+  "resilience": {
+    "disaster_recovery": "artifact_backup_available",
+    "rollback_ready": true,
+    "notes": [
+      "audit artifacts and scoring outputs are persisted for recovery"
+    ]
+  },
+  "artifact_path": "C:\\Users\\shiva\\OneDrive\\Desktop\\AI-ML-Immersion-program-\\real_task\\experiments\\drift_monitoring.json"
+}
